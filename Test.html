@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Primal Pixel - Edisi Web3</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    
+    <!-- Library Solana -->
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
+    <script src="https://unpkg.com/@metaplex-foundation/mpl-token-metadata@latest/dist/mpl-token-metadata.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Press Start 2P', cursive;
+            background-color: #1a202c;
+            color: #e2e8f0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .game-container {
+            width: 100%;
+            max-width: 1024px;
+            aspect-ratio: 16 / 9;
+            position: relative;
+            box-shadow: 0 0 30px rgba(99, 179, 237, 0.4);
+            border: 3px solid #4a5568;
+            border-radius: 1rem;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border-radius: 0.8rem;
+        }
+        .menu-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(5px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 2rem;
+            z-index: 10;
+        }
+        .card {
+            border: 3px solid #4a5568;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .card:not(.locked):hover, .card.selected {
+            border-color: #f6e05e;
+            transform: scale(1.05);
+            box-shadow: 0 0 20px #f6e05e;
+        }
+        .card.locked {
+            filter: grayscale(100%);
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .card.locked .char-name {
+            text-decoration: line-through;
+        }
+        .connect-wallet-btn {
+            background-color: #f6e05e;
+            color: #1a202c;
+            padding: 1rem 2rem;
+            border-radius: 0.5rem;
+            font-size: 1.25rem;
+            transition: all 0.2s;
+        }
+        .connect-wallet-btn:hover {
+            background-color: #faf089;
+            transform: scale(1.05);
+        }
+        .health-bar-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            z-index: 5;
+        }
+        .health-bar-wrapper {
+            width: 45%;
+            background: rgba(0, 0, 0, 0.5);
+            border: 3px solid #4a5568;
+            padding: 5px;
+            border-radius: 10px;
+        }
+        .health-bar {
+            background-color: #48bb78;
+            height: 30px;
+            width: 100%;
+            border-radius: 5px;
+            transition: width 0.5s ease-in-out;
+        }
+        .health-bar.low {
+            background-color: #f56565;
+        }
+        .player-name {
+            position: absolute;
+            top: -25px;
+            font-size: 14px;
+            text-shadow: 2px 2px 4px black;
+        }
+        #player1-name { left: 0; }
+        #player2-name { right: 0; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+<div class="game-container" id="game-container">
+
+    <!-- Layar Login/Connect Wallet -->
+    <div id="login-screen" class="menu-overlay">
+        <h1 class="text-4xl md:text-5xl mb-4 text-yellow-300">PRIMAL PIXEL</h1>
+        <p class="text-lg mb-8">Hubungkan dompet Solana Anda untuk bermain</p>
+        <button id="connect-wallet-btn" class="connect-wallet-btn">Connect Wallet</button>
+        <p id="login-status" class="mt-4 text-sm"></p>
+    </div>
+
+    <!-- Layar Pemilihan Pemain -->
+    <div id="player-select-screen" class="menu-overlay hidden">
+        <h1 class="text-4xl md:text-5xl mb-2 text-yellow-300">PILIH PETARUNG</h1>
+        <p class="mb-8 text-lg" id="player-select-prompt">Pemain 1 Memilih...</p>
+        <div id="character-grid" class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8">
+            <!-- Kartu karakter akan dibuat oleh JS -->
+        </div>
+        <p id="no-nft-message" class="mt-6 text-red-400 hidden">Anda tidak memiliki NFT Petarung. Silakan dapatkan satu untuk bermain!</p>
+    </div>
+
+    <!-- Layar Pemilihan Arena -->
+    <div id="arena-select-screen" class="menu-overlay hidden">
+        <h1 class="text-4xl md:text-5xl mb-8 text-yellow-300">PILIH ARENA</h1>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
+            <div class="card bg-gray-800 rounded-lg p-4" data-arena="hutan">
+                <img src="https://placehold.co/400x225/2f855a/FFFFFF?text=Hutan+Mistis" alt="Hutan Mistis" class="mx-auto mb-2 rounded">
+                <h3 class="text-center text-xl">Hutan Mistis</h3>
+            </div>
+            <div class="card bg-gray-800 rounded-lg p-4" data-arena="kastil">
+                <img src="https://placehold.co/400x225/b7410e/FFFFFF?text=Kastil+Lava" alt="Kastil Lava" class="mx-auto mb-2 rounded">
+                <h3 class="text-center text-xl">Kastil Lava</h3>
+            </div>
+        </div>
+    </div>
+
+    <!-- Layar Game Over -->
+    <div id="game-over-screen" class="menu-overlay hidden">
+        <h1 id="winner-text" class="text-4xl md:text-6xl mb-8 text-yellow-300"></h1>
+    </div>
+
+    <!-- UI Pertarungan (HP Bar, dll) -->
+    <div id="fight-ui" class="hidden">
+        <div class="health-bar-container">
+            <div class="health-bar-wrapper">
+                 <div class="relative"><span id="player1-name" class="player-name">Player 1</span></div>
+                <div id="player1-health" class="health-bar"></div>
+            </div>
+            <div id="timer" class="text-6xl text-white" style="text-shadow: 2px 2px 4px black;">60</div>
+            <div class="health-bar-wrapper">
+                 <div class="relative"><span id="player2-name" class="player-name">Player 2</span></div>
+                <div id="player2-health" class="health-bar"></div>
+            </div>
+        </div>
+    </div>
+    
+    <canvas id="game-canvas"></canvas>
+</div>
+
+<script>
+    window.addEventListener('load', () => {
+        // === KONFIGURASI GAME & BLOCKCHAIN ===
+        const GAME_NFT_COLLECTION_ADDRESS = "GANTI_DENGAN_ALAMAT_MINT_KOLEKSI_ANDA";
+        const QUICKNODE_RPC_URL = "https://proportionate-light-violet.solana-devnet.quiknode.pro/2b304a0decd745566d462b1c74cacbf295e68c17/";
+
+        // === Variabel Global dari Library Solana ===
+        const solanaWeb3 = window.solanaWeb3;
+        const mplTokenMetadata = window.mplTokenMetadata;
+
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const gameContainer = document.getElementById('game-container');
+
+        function resizeCanvas() {
+            canvas.width = gameContainer.clientWidth;
+            canvas.height = gameContainer.clientHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        const characters = {
+            ksatria: { name: 'Ksatria', id: 'ksatria', src: 'https://placehold.co/200x200/3182ce/FFFFFF?text=Ksatria', speed: 5, damage: 10 },
+            penyihir: { name: 'Penyihir', id: 'penyihir', src: 'https://placehold.co/200x200/c53030/FFFFFF?text=Penyihir', speed: 4, damage: 15 },
+            pemanah: { name: 'Pemanah', id: 'pemanah', src: 'https://placehold.co/200x200/38a169/FFFFFF?text=Pemanah', speed: 6, damage: 8 },
+            golem: { name: 'Golem', id: 'golem', src: 'https://placehold.co/200x200/718096/FFFFFF?text=Golem', speed: 3, damage: 20 },
+        };
+
+        const arenas = {
+            hutan: { src: 'https://placehold.co/1024x576/2f855a/FFFFFF?text=Arena+Hutan' },
+            kastil: { src: 'https://placehold.co/1024x576/b7410e/FFFFFF?text=Arena+Kastil' },
+        };
+        
+        Object.values(characters).forEach(c => { c.img = new Image(); c.img.src = c.src; });
+        Object.values(arenas).forEach(a => { a.img = new Image(); a.img.src = a.src; });
+
+        let gameState = 'login';
+        let player1Choice = null;
+        let player2Choice = null;
+        let arenaChoice = null;
+        let player1, player2;
+        let gameTimer = 60;
+        let timerId;
+
+        const keys = { a: { pressed: false }, d: { pressed: false }, ArrowLeft: { pressed: false }, ArrowRight: { pressed: false } };
+
+        class Player {
+            constructor({ position, velocity, characterData, facingRight = true }) {
+                this.characterData = characterData;
+                this.width = characterData.img.width / 2;
+                this.height = characterData.img.height / 2;
+                this.position = position;
+                this.velocity = velocity;
+                this.speed = characterData.speed;
+                this.maxHp = 100;
+                this.hp = th
